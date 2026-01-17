@@ -38,3 +38,7 @@ Environment variables (see `.env.example`):
 - `API_KEY`: API key for upstream service
 - `SECRET_KEY`: JWT signing key
 - `USERS`: User credentials in format `user1:pass1,user2:pass2`
+
+## Git Workflow
+
+**IMPORTANT**: Do NOT commit to git unless explicitly instructed by the user. Never proactively suggest or execute git commits. Only commit when the user explicitly says to commit.

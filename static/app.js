@@ -9,7 +9,10 @@ const state = {
     currentModel: localStorage.getItem('currentModel') || '',
     isStreaming: false,
     abortController: null,
-    searchQuery: ''
+    searchQuery: '',
+    selectedImages: [],
+    isMobile: /iPhone|iPad|iPod|Android/i.test(navigator.userAgent),
+    isIOS: /iPhone|iPad|iPod/i.test(navigator.userAgent)
 };
 
 // ============ DOM元素 ============
@@ -62,6 +65,9 @@ const toggleApiKeyBtn = document.getElementById('toggle-api-key');
 const apiKeyMasked = document.getElementById('api-key-masked');
 const testSettingsBtn = document.getElementById('test-settings-btn');
 const settingsMessage = document.getElementById('settings-message');
+const imageBtn = document.getElementById('image-btn');
+const imageInput = document.getElementById('image-input');
+const imagePreviewContainer = document.getElementById('image-preview-container');
 
 // ============ 初始化 ============
 async function init() {
@@ -598,15 +604,18 @@ function renderMessages(messages) {
         return;
     }
 
-    chatMessages.innerHTML = messages.map(msg => `
-        <div class="message ${msg.role}">
-            <div class="message-avatar">${msg.role === 'user' ? getUserInitial() : 'AI'}</div>
-            <div class="message-body">
-                <div class="message-role">${msg.role === 'user' ? '你' : 'AI'}</div>
-                <div class="message-content">${renderMarkdown(msg.content)}</div>
+    chatMessages.innerHTML = messages.map(msg => {
+        const content = typeof msg.content === 'string' ? renderMarkdown(msg.content) : formatMessageWithImages(msg.content);
+        return `
+            <div class="message ${msg.role}">
+                <div class="message-avatar">${msg.role === 'user' ? getUserInitial() : 'AI'}</div>
+                <div class="message-body">
+                    <div class="message-role">${msg.role === 'user' ? '用户' : 'AI'}</div>
+                    <div class="message-content">${content}</div>
+                </div>
             </div>
-        </div>
-    `).join('');
+        `;
+    }).join('');
 
     scrollToBottom();
     highlightCode();
@@ -622,7 +631,7 @@ function appendMessage(role, content) {
     div.innerHTML = `
         <div class="message-avatar">${role === 'user' ? getUserInitial() : 'AI'}</div>
         <div class="message-body">
-            <div class="message-role">${role === 'user' ? '你' : 'AI'}</div>
+            <div class="message-role">${role === 'user' ? '用户' : 'AI'}</div>
             <div class="message-content">${renderMarkdown(content)}</div>
         </div>
     `;
@@ -673,7 +682,7 @@ function finalizeStreamingMessage() {
 // ============ 发送消息 ============
 async function sendMessage() {
     const content = chatInput.value.trim();
-    if (!content || state.isStreaming) return;
+    if ((!content && state.selectedImages.length === 0) || state.isStreaming) return;
 
     // 获取或创建对话
     let conv;
@@ -685,15 +694,34 @@ async function sendMessage() {
         state.currentConversationId = conv.id;
     }
 
+    // 构建消息内容（支持图片）
+    let messageContent;
+    if (state.selectedImages.length > 0) {
+        messageContent = [
+            { type: 'text', text: content || '请分析这些图片' }
+        ];
+        for (const img of state.selectedImages) {
+            messageContent.push({
+                type: 'image_url',
+                image_url: { url: img }
+            });
+        }
+    } else {
+        messageContent = content;
+    }
+
     // 添加用户消息
-    conv.messages.push({ role: 'user', content });
-    appendMessage('user', content);
+    conv.messages.push({ role: 'user', content: messageContent });
+    appendMessage('user', typeof messageContent === 'string' ? messageContent : formatMessageWithImages(messageContent));
     chatInput.value = '';
     autoResizeInput();
 
+    // 清除图片预览
+    clearImagePreviews();
+
     // 更新标题
     if (conv.messages.length === 1) {
-        conv.title = content.slice(0, 30) + (content.length > 30 ? '...' : '');
+        conv.title = (typeof messageContent === 'string' ? messageContent : content || '图片对话').slice(0, 30) + (content.length > 30 ? '...' : '');
         conv.model = state.currentModel;
     }
     saveConversations();
@@ -875,6 +903,124 @@ function autoResizeInput() {
     chatInput.style.height = 'auto';
     chatInput.style.height = Math.min(chatInput.scrollHeight, 200) + 'px';
 }
+
+// ============ 图片处理 ============
+function formatMessageWithImages(content) {
+    if (typeof content === 'string') return content;
+
+    let html = '';
+    for (const item of content) {
+        if (item.type === 'text') {
+            html += `<p>${escapeHtml(item.text)}</p>`;
+        } else if (item.type === 'image_url') {
+            html += `<img src="${item.image_url.url}" style="max-width: 300px; border-radius: 8px; margin: 8px 0;" />`;
+        }
+    }
+    return html;
+}
+
+function clearImagePreviews() {
+    state.selectedImages = [];
+    imagePreviewContainer.innerHTML = '';
+    imagePreviewContainer.classList.add('hidden');
+    imageInput.value = '';
+}
+
+function renderImagePreviews() {
+    if (state.selectedImages.length === 0) {
+        imagePreviewContainer.classList.add('hidden');
+        return;
+    }
+
+    imagePreviewContainer.classList.remove('hidden');
+    imagePreviewContainer.innerHTML = state.selectedImages.map((img, index) => `
+        <div class="image-preview-item">
+            <img src="${img}" alt="Preview ${index + 1}">
+            <button class="image-preview-remove" data-index="${index}">×</button>
+        </div>
+    `).join('');
+
+    // 绑定删除按钮事件
+    imagePreviewContainer.querySelectorAll('.image-preview-remove').forEach(btn => {
+        btn.addEventListener('click', () => {
+            const index = parseInt(btn.dataset.index);
+            state.selectedImages.splice(index, 1);
+            renderImagePreviews();
+        });
+    });
+}
+
+function fileToBase64(file) {
+    return new Promise((resolve, reject) => {
+        const reader = new FileReader();
+        reader.onload = () => resolve(reader.result);
+        reader.onerror = reject;
+        reader.readAsDataURL(file);
+    });
+}
+
+// 图片上传按钮事件
+if (imageBtn && imageInput) {
+    imageBtn.addEventListener('click', () => {
+        imageInput.click();
+    });
+
+    imageInput.addEventListener('change', async (e) => {
+        const files = Array.from(e.target.files);
+        if (files.length === 0) return;
+
+        for (const file of files) {
+            if (!file.type.startsWith('image/')) {
+                showToast('只能上传图片文件');
+                continue;
+            }
+
+            if (file.size > 10 * 1024 * 1024) {
+                showToast('图片大小不能超过 10MB');
+                continue;
+            }
+
+            try {
+                const base64 = await fileToBase64(file);
+                state.selectedImages.push(base64);
+            } catch (e) {
+                console.error('读取图片失败:', e);
+                showToast('读取图片失败');
+            }
+        }
+
+        renderImagePreviews();
+    });
+}
+
+// 支持粘贴图片
+chatInput.addEventListener('paste', async (e) => {
+    const items = e.clipboardData?.items;
+    if (!items) return;
+
+    for (const item of items) {
+        if (item.type.startsWith('image/')) {
+            e.preventDefault();
+            const file = item.getAsFile();
+            if (!file) continue;
+
+            if (file.size > 10 * 1024 * 1024) {
+                showToast('图片大小不能超过 10MB');
+                continue;
+            }
+
+            try {
+                const base64 = await fileToBase64(file);
+                state.selectedImages.push(base64);
+                renderImagePreviews();
+                showToast('图片已添加');
+            } catch (e) {
+                console.error('读取图片失败:', e);
+                showToast('读取图片失败');
+            }
+        }
+    }
+});
 
 chatInput.addEventListener('input', autoResizeInput);
 
@@ -1332,5 +1478,209 @@ function showSettingsMessage(message, type) {
     }, 5000);
 }
 
-// ============ 启动 ============
+// ============ 移动端优化 ============
+// 防止iOS Safari双击缩放
+let lastTouchEnd = 0;
+document.addEventListener('touchend', (e) => {
+    const now = Date.now();
+    if (now - lastTouchEnd <= 300) {
+        e.preventDefault();
+    }
+    lastTouchEnd = now;
+}, { passive: false });
+
+// 移动端键盘弹出时自动滚动到底部
+if (state.isMobile && chatInput) {
+    chatInput.addEventListener('focus', () => {
+        setTimeout(() => {
+            scrollToBottom();
+        }, 300);
+    });
+}
+
+// iOS Safari地址栏隐藏优化
+if (state.isIOS) {
+    // 监听窗口大小变化（键盘弹出/收起）
+    let lastHeight = window.innerHeight;
+    window.addEventListener('resize', () => {
+        const currentHeight = window.innerHeight;
+        if (currentHeight < lastHeight) {
+            // 键盘弹出
+            setTimeout(() => scrollToBottom(), 100);
+        }
+        lastHeight = currentHeight;
+    });
+}
+
+// 移动端侧边栏滑动关闭
+if (state.isMobile && sidebar && sidebarOverlay) {
+    let touchStartX = 0;
+    let touchEndX = 0;
+
+    sidebar.addEventListener('touchstart', (e) => {
+        touchStartX = e.changedTouches[0].screenX;
+    }, { passive: true });
+
+    sidebar.addEventListener('touchend', (e) => {
+        touchEndX = e.changedTouches[0].screenX;
+        if (touchStartX - touchEndX > 50) {
+            // 向左滑动，关闭侧边栏
+            closeSidebar();
+        }
+    }, { passive: true });
+}
+
+// 移动端优化：点击消息区域关闭侧边栏
+if (state.isMobile && chatMessages) {
+    chatMessages.addEventListener('click', () => {
+        if (sidebar && sidebar.classList.contains('open')) {
+            closeSidebar();
+        }
+    });
+}
+
+// 移动端优化：防止输入框被键盘遮挡
+if (state.isMobile && chatInput) {
+    chatInput.addEventListener('focus', () => {
+        // 延迟执行，等待键盘完全弹出
+        setTimeout(() => {
+            chatInput.scrollIntoView({ behavior: 'smooth', block: 'center' });
+        }, 300);
+    });
+}
+
+// 移动端优化：长按消息复制
+if (state.isMobile) {
+    document.addEventListener('DOMContentLoaded', () => {
+        chatMessages.addEventListener('contextmenu', (e) => {
+            const messageContent = e.target.closest('.message-content');
+            if (messageContent) {
+                e.preventDefault();
+                const text = messageContent.textContent;
+                if (navigator.clipboard && navigator.clipboard.writeText) {
+                    navigator.clipboard.writeText(text).then(() => {
+                        showToast('已复制消息内容');
+                    }).catch(() => {
+                        showToast('复制失败');
+                    });
+                }
+            }
+        });
+    });
+}
+
+// 移动端优化：下拉刷新禁用（防止误触）
+if (state.isMobile) {
+    document.body.addEventListener('touchmove', (e) => {
+        if (e.target.closest('.chat-messages') && chatMessages.scrollTop === 0) {
+            // 在消息区域顶部时，允许滚动
+            return;
+        }
+    }, { passive: true });
+}
+
+// 移动端优化：自动隐藏地址栏
+if (state.isMobile) {
+    window.addEventListener('load', () => {
+        setTimeout(() => {
+            window.scrollTo(0, 1);
+        }, 100);
+    });
+}
+
+// 移动端优化：优化触摸滚动性能
+if (state.isMobile) {
+    const scrollElements = [chatMessages, conversationList, modelDropdownContent];
+    scrollElements.forEach(el => {
+        if (el) {
+            el.style.webkitOverflowScrolling = 'touch';
+        }
+    });
+}
+
+// 移动端优化：阻止页面过度滚动
+if (state.isMobile) {
+    document.body.addEventListener('touchmove', (e) => {
+        const target = e.target;
+        const scrollable = target.closest('.chat-messages, .conversation-list, .model-dropdown-content, .admin-panel');
+
+        if (!scrollable) {
+            e.preventDefault();
+        }
+    }, { passive: false });
+}
+
+// 移动端优化：优化输入框体验
+if (state.isMobile && chatInput) {
+    // 防止输入时页面缩放
+    chatInput.addEventListener('touchstart', (e) => {
+        e.stopPropagation();
+    }, { passive: true });
+
+    // 输入时自动调整高度
+    chatInput.addEventListener('input', () => {
+        autoResizeInput();
+        if (state.isMobile) {
+            // 移动端输入时保持输入框可见
+            setTimeout(() => {
+                chatInput.scrollIntoView({ behavior: 'smooth', block: 'nearest' });
+            }, 50);
+        }
+    });
+}
+
+// 移动端优化：优化模型选择器
+if (state.isMobile && modelSelector) {
+    modelTrigger.addEventListener('click', (e) => {
+        e.stopPropagation();
+        toggleModelDropdown();
+
+        // 移动端打开时滚动到当前选中的模型
+        if (modelSelector.classList.contains('open')) {
+            setTimeout(() => {
+                const activeItem = modelDropdownContent.querySelector('.model-item.active');
+                if (activeItem) {
+                    activeItem.scrollIntoView({ behavior: 'smooth', block: 'center' });
+                }
+            }, 100);
+        }
+    });
+}
+
+// 移动端优化：优化图片预览
+if (state.isMobile && imagePreviewContainer) {
+    // 移动端图片预览优化
+    imagePreviewContainer.addEventListener('click', (e) => {
+        const img = e.target.closest('.image-preview-item img');
+        if (img && !e.target.classList.contains('image-preview-remove')) {
+            // 可以添加全屏预览功能
+            e.preventDefault();
+        }
+    });
+}
+
+// 移动端优化：网络状态监听
+if (state.isMobile) {
+    window.addEventListener('online', () => {
+        showToast('网络已连接');
+    });
+
+    window.addEventListener('offline', () => {
+        showToast('网络已断开', 3000);
+    });
+}
+
+// 移动端优化：页面可见性变化处理
+if (state.isMobile) {
+    document.addEventListener('visibilitychange', () => {
+        if (document.hidden) {
+            // 页面隐藏时停止流式输出
+            if (state.isStreaming) {
+                stopGeneration();
+            }
+        }
+    });
+}
+
+// 启动
 init();

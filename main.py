@@ -172,7 +172,7 @@ class SettingsRequest(BaseModel):
 
 class ChatMessage(BaseModel):
     role: str
-    content: str
+    content: str | list  # 支持字符串或数组（用于图片）
 
 class ChatRequest(BaseModel):
     model: str

@@ -2,7 +2,10 @@
 <html lang="zh-CN">
 <head>
     <meta charset="UTF-8">
-    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no, viewport-fit=cover">
+    <meta name="apple-mobile-web-app-capable" content="yes">
+    <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+    <meta name="format-detection" content="telephone=no">
     <title>AI Chat</title>
     <link rel="stylesheet" href="/static/style.css">
     <link rel="stylesheet" id="hljs-theme" href="https://cdnjs.cloudflare.com/ajax/libs/highlight.js/11.9.0/styles/github-dark.min.css">
@@ -141,7 +144,14 @@
                 </div>
             </div>
             <div class="chat-input-container">
+                <div id="image-preview-container" class="image-preview-container hidden"></div>
                 <div class="chat-input-wrapper">
+                    <input type="file" id="image-input" accept="image/*" multiple style="display: none;">
+                    <button id="image-btn" class="image-btn" title="上传图片">
+                        <svg viewBox="0 0 24 24" width="20" height="20">
+                            <path fill="currentColor" d="M21 19V5c0-1.1-.9-2-2-2H5c-1.1 0-2 .9-2 2v14c0 1.1.9 2 2 2h14c1.1 0 2-.9 2-2zM8.5 13.5l2.5 3.01L14.5 12l4.5 6H5l3.5-4.5z"/>
+                        </svg>
+                    </button>
                     <textarea id="chat-input" placeholder="输入消息... (Shift+Enter 换行)" rows="1"></textarea>
                     <div class="input-actions">
                         <button id="stop-btn" class="hidden" title="停止生成 (Esc)">
@@ -157,7 +167,7 @@
                     </div>
                 </div>
                 <div class="input-hint">
-                    <span id="keyboard-hint">Enter 发送 · Shift+Enter 换行 · Esc 停止</span>
+                    <span id="keyboard-hint">Enter 发送 · Shift+Enter 换行 · Esc 停止 · Ctrl+V 粘贴图片</span>
                 </div>
             </div>
         </main>
