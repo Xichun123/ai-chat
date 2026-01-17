@@ -756,13 +756,19 @@ async function sendMessage() {
         const reader = resp.body.getReader();
         const decoder = new TextDecoder();
         let assistantContent = '';
+        let base64Buffer = ''; // 用于累积base64数据
+        let buffer = ''; // 用于累积不完整的数据行
 
         while (true) {
             const { done, value } = await reader.read();
             if (done) break;
 
-            const chunk = decoder.decode(value);
-            const lines = chunk.split('\n');
+            const chunk = decoder.decode(value, { stream: true });
+            buffer += chunk;
+            const lines = buffer.split('\n');
+
+            // 保留最后一行（可能不完整）
+            buffer = lines.pop() || '';
 
             for (const line of lines) {
                 if (line.startsWith('data: ')) {
@@ -771,12 +777,41 @@ async function sendMessage() {
 
                     try {
                         const json = JSON.parse(data);
-                        const delta = json.choices?.[0]?.delta?.content;
-                        if (delta) {
-                            assistantContent += delta;
-                            updateStreamingMessage(assistantContent);
+                        const delta = json.choices?.[0]?.delta;
+
+                        // 处理文本内容
+                        if (delta?.content) {
+                            assistantContent += delta.content;
+
+                            // 检测是否正在接收base64数据
+                            // 如果内容看起来像base64且很长，先缓存
+                            if (isStreamingBase64(assistantContent)) {
+                                base64Buffer += delta.content;
+                                // 每隔一段时间更新一次显示（避免频繁渲染）
+                                if (base64Buffer.length % 1000 === 0) {
+                                    updateStreamingMessage(assistantContent);
+                                }
+                            } else {
+                                updateStreamingMessage(assistantContent);
+                            }
                         }
-                    } catch (e) {}
+
+                        // 处理图片数据
+                        if (delta?.images && Array.isArray(delta.images)) {
+                            console.log('检测到图片数据:', delta.images.length, '张图片');
+                            for (const img of delta.images) {
+                                if (img.type === 'image_url' && img.image_url?.url) {
+                                    const imageUrl = img.image_url.url;
+                                    console.log('添加图片到内容，URL长度:', imageUrl.length);
+                                    // 直接使用 HTML img 标签，避免 Markdown 解析问题
+                                    assistantContent += `\n<img src="${imageUrl}" alt="Generated Image" style="max-width: 100%; height: auto; border-radius: 8px; margin: 1em 0; display: block;" />\n`;
+                                    updateStreamingMessage(assistantContent);
+                                }
+                            }
+                        }
+                    } catch (e) {
+                        console.error('解析响应数据失败:', e, '原始数据:', data.substring(0, 200));
+                    }
                 }
             }
         }
@@ -882,11 +917,113 @@ function escapeHtml(text) {
 }
 
 function renderMarkdown(text) {
+    // 提取所有 HTML img 标签，用占位符替换
+    const imgTags = [];
+    const imgPlaceholder = '\x00IMG_PLACEHOLDER_';  // 使用不可见字符避免被 Markdown 解析
+
+    text = text.replace(/<img[^>]+>/g, (match) => {
+        imgTags.push(match);
+        return `${imgPlaceholder}${imgTags.length - 1}\x00`;
+    });
+
     marked.setOptions({
         breaks: true,
         gfm: true
     });
-    return marked.parse(text);
+
+    // 自定义渲染器，处理图片
+    const renderer = new marked.Renderer();
+    const originalImageRenderer = renderer.image.bind(renderer);
+
+    renderer.image = function(href, title, text) {
+        // 如果是 base64 图片，直接返回 img 标签
+        if (href && href.startsWith('data:image')) {
+            return `<img src="${href}" alt="${text || 'Generated Image'}" style="max-width: 100%; height: auto; border-radius: 8px; margin: 1em 0; display: block;" />`;
+        }
+        return originalImageRenderer(href, title, text);
+    };
+
+    marked.setOptions({ renderer });
+
+    // 检测并处理base64图片
+    text = detectAndRenderBase64Images(text);
+
+    // 解析 Markdown
+    let html = marked.parse(text);
+
+    // 将占位符替换回 img 标签
+    html = html.replace(new RegExp(`${imgPlaceholder}(\\d+)\x00`, 'g'), (_match, index) => {
+        return imgTags[parseInt(index)];
+    });
+
+    return html;
+}
+
+// 检测并渲染base64图片
+function detectAndRenderBase64Images(text) {
+    // 检测完整的base64图片数据（data:image格式）
+    const dataUrlPattern = /(data:image\/[a-zA-Z]+;base64,[A-Za-z0-9+/=]+)/g;
+
+    // 检测纯base64字符串（可能是图片）
+    const pureBase64Pattern = /^([A-Za-z0-9+/]{100,}={0,2})$/gm;
+
+    // 替换data URL格式的图片
+    text = text.replace(dataUrlPattern, (match) => {
+        return `\n\n![Generated Image](${match})\n\n`;
+    });
+
+    // 检测纯base64字符串（长度超过100字符，可能是图片）
+    text = text.replace(pureBase64Pattern, (match) => {
+        // 尝试检测是否为图片base64
+        if (isLikelyImageBase64(match)) {
+            // 尝试不同的图片格式
+            const formats = ['png', 'jpeg', 'jpg', 'webp'];
+            for (const format of formats) {
+                const dataUrl = `data:image/${format};base64,${match}`;
+                return `\n\n![Generated Image](${dataUrl})\n\n`;
+            }
+        }
+        return match;
+    });
+
+    return text;
+}
+
+// 判断是否可能是图片的base64编码
+function isLikelyImageBase64(base64String) {
+    // 图片base64通常很长（至少几KB）
+    if (base64String.length < 1000) return false;
+
+    // 检查是否符合base64字符集
+    const base64Regex = /^[A-Za-z0-9+/]+={0,2}$/;
+    if (!base64Regex.test(base64String)) return false;
+
+    // 尝试解码前几个字节，检查图片文件头
+    try {
+        const decoded = atob(base64String.substring(0, 100));
+        // PNG: 89 50 4E 47
+        if (decoded.charCodeAt(0) === 0x89 && decoded.charCodeAt(1) === 0x50) return true;
+        // JPEG: FF D8 FF
+        if (decoded.charCodeAt(0) === 0xFF && decoded.charCodeAt(1) === 0xD8) return true;
+        // WebP: 52 49 46 46
+        if (decoded.charCodeAt(0) === 0x52 && decoded.charCodeAt(1) === 0x49) return true;
+    } catch (e) {
+        return false;
+    }
+
+    return false;
+}
+
+// 检测流式响应中是否正在接收base64数据
+function isStreamingBase64(content) {
+    // 检查最后1000个字符是否主要是base64字符
+    const tail = content.slice(-1000);
+    const base64Chars = tail.match(/[A-Za-z0-9+/=]/g);
+    if (!base64Chars) return false;
+
+    // 如果超过90%是base64字符，认为正在接收base64
+    const ratio = base64Chars.length / tail.length;
+    return ratio > 0.9 && tail.length > 500;
 }
 
 function highlightCode() {

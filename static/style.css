@@ -954,6 +954,14 @@ body {
     border-radius: 0 8px 8px 0;
 }
 
+.message-content img {
+    max-width: 100%;
+    height: auto;
+    border-radius: 8px;
+    margin: 1em 0;
+    display: block;
+}
+
 .message-content table {
     border-collapse: collapse;
     width: 100%;
@@ -2106,4 +2114,210 @@ body {
 
 .spin {
     animation: spin 1s linear infinite;
+}
+
+/* ============ AI图片生成对话框 ============ */
+.image-gen-dialog-overlay {
+    position: fixed;
+    top: 0;
+    left: 0;
+    right: 0;
+    bottom: 0;
+    background: rgba(0, 0, 0, 0.7);
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    z-index: 10000;
+    padding: 20px;
+    backdrop-filter: blur(4px);
+}
+
+.image-gen-dialog {
+    background: var(--bg-secondary);
+    border-radius: 16px;
+    width: 100%;
+    max-width: 600px;
+    max-height: 90vh;
+    overflow: hidden;
+    display: flex;
+    flex-direction: column;
+    box-shadow: 0 20px 60px rgba(0, 0, 0, 0.5);
+    border: 1px solid var(--border);
+}
+
+.image-gen-header {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    padding: 20px 24px;
+    border-bottom: 1px solid var(--border);
+}
+
+.image-gen-header h3 {
+    font-size: 1.25rem;
+    font-weight: 600;
+    color: var(--text-primary);
+}
+
+.close-dialog-btn {
+    width: 32px;
+    height: 32px;
+    border: none;
+    background: transparent;
+    color: var(--text-secondary);
+    font-size: 1.5rem;
+    cursor: pointer;
+    border-radius: 6px;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    transition: all 0.2s ease;
+}
+
+.close-dialog-btn:hover {
+    background: var(--bg-hover);
+    color: var(--text-primary);
+}
+
+.image-gen-body {
+    padding: 24px;
+    overflow-y: auto;
+    flex: 1;
+}
+
+.image-gen-body .form-group {
+    margin-bottom: 20px;
+}
+
+.image-gen-body .form-group label {
+    display: block;
+    margin-bottom: 8px;
+    font-size: 0.875rem;
+    font-weight: 500;
+    color: var(--text-primary);
+}
+
+.image-gen-body textarea,
+.image-gen-body select {
+    width: 100%;
+    padding: 12px;
+    background: var(--bg-tertiary);
+    border: 1px solid var(--border);
+    border-radius: 8px;
+    color: var(--text-primary);
+    font-size: 0.875rem;
+    font-family: inherit;
+    transition: all 0.2s ease;
+}
+
+.image-gen-body textarea {
+    resize: vertical;
+    min-height: 100px;
+}
+
+.image-gen-body textarea:focus,
+.image-gen-body select:focus {
+    outline: none;
+    border-color: var(--accent);
+    background: var(--bg-primary);
+}
+
+.form-row {
+    display: grid;
+    grid-template-columns: 1fr 1fr;
+    gap: 16px;
+}
+
+.image-gen-result {
+    margin-top: 24px;
+    padding: 20px;
+    background: var(--bg-tertiary);
+    border-radius: 12px;
+    min-height: 100px;
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    justify-content: center;
+    gap: 16px;
+}
+
+.loading-spinner {
+    width: 40px;
+    height: 40px;
+    border: 3px solid var(--border);
+    border-top-color: var(--accent);
+    border-radius: 50%;
+    animation: spin 1s linear infinite;
+}
+
+.generated-image-item {
+    width: 100%;
+    display: flex;
+    flex-direction: column;
+    gap: 12px;
+}
+
+.generated-image-item img {
+    width: 100%;
+    border-radius: 12px;
+    box-shadow: var(--shadow);
+}
+
+.generated-image-actions {
+    display: flex;
+    gap: 12px;
+    justify-content: center;
+}
+
+.generated-image-actions button {
+    flex: 1;
+    max-width: 200px;
+}
+
+.revised-prompt {
+    font-size: 0.8rem;
+    color: var(--text-secondary);
+    padding: 12px;
+    background: var(--bg-primary);
+    border-radius: 8px;
+    line-height: 1.5;
+}
+
+.error-message {
+    color: var(--error);
+    text-align: center;
+    font-size: 0.875rem;
+}
+
+.image-gen-footer {
+    display: flex;
+    gap: 12px;
+    padding: 20px 24px;
+    border-top: 1px solid var(--border);
+    justify-content: flex-end;
+}
+
+.image-gen-footer button {
+    min-width: 100px;
+}
+
+/* 移动端适配 */
+@media (max-width: 768px) {
+    .image-gen-dialog {
+        max-width: 100%;
+        max-height: 100vh;
+        border-radius: 0;
+    }
+
+    .form-row {
+        grid-template-columns: 1fr;
+    }
+
+    .image-gen-footer {
+        flex-direction: column-reverse;
+    }
+
+    .image-gen-footer button {
+        width: 100%;
+    }
 }
