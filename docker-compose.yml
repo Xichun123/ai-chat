@@ -1,0 +1,13 @@
+services:
+  ai-chat:
+    build: .
+    ports:
+      - "8000:8000"
+    environment:
+      - API_BASE_URL=https://api.050919.xyz
+      - API_KEY=${API_KEY}
+      - SECRET_KEY=${SECRET_KEY}
+      - USERS=${USERS}
+    volumes:
+      - ./data:/app/data
+    restart: unless-stopped

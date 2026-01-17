@@ -1,0 +1,25 @@
+# 敏感文件
+.env
+.env.*
+!.env.example
+data/
+
+# Git
+.git
+.gitignore
+
+# Python缓存
+__pycache__
+*.pyc
+*.pyo
+.venv
+venv
+
+# IDE
+.idea
+.vscode
+
+# 文档和配置
+*.md
+Dockerfile
+docker-compose.yml
