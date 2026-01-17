@@ -45,7 +45,7 @@ docker run -d \
 
 访问 `http://localhost:8000` 并使用 `admin:your-password` 登录。
 
-> **提示**：镜像支持 `linux/amd64` 和 `linux/arm64` 架构，可在 x86 服务器和 ARM 设备（如树莓派）上运行。
+> **提示**：镜像支持 `linux/amd64` 架构，可在 x86 服务器上运行。
 
 ### Docker Compose 部署
 
@@ -269,14 +269,17 @@ docker rm ai-chat
 - Google Gemini (通过兼容层)
 - 本地模型 (Ollama, LM Studio 等)
 
-## 构建多架构镜像
+## 构建 Docker 镜像
 
 如果你想自己构建镜像：
 
 ```bash
-# 构建支持 amd64 和 arm64 的镜像
-docker buildx build --platform linux/amd64,linux/arm64 \
-  -t your-username/ai-chat:latest --push .
+# 构建 amd64 架构镜像
+docker buildx build --platform linux/amd64 \
+  -t your-username/ai-chat:latest --load .
+
+# 推送到 Docker Hub
+docker push your-username/ai-chat:latest
 ```
 
 ## License
